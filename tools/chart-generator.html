@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pink Skies — Chart Generator</title>
+<style>
+  :root { --pink:#ff5fa2; --pink-deep:#e23f88; --bg:#fff1f7; --ink:#3a1f33; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Roboto, Arial, sans-serif; background: var(--bg); color: var(--ink); margin:0; padding: 18px; }
+  h1 { color: var(--pink-deep); font-size: 22px; margin: 0 0 4px; }
+  p.sub { color: #7a5a70; margin-top:0; font-size: 13px; }
+  .panel { background: white; border-radius: 16px; padding: 16px; max-width: 640px; margin: 0 auto 16px; box-shadow: 0 6px 20px rgba(226,63,136,0.12); }
+  label { font-weight: 600; font-size: 13px; display:block; margin-bottom:6px; }
+  input[type="file"], input[type="text"], input[type="number"] {
+    width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #f0c4da; margin-bottom: 12px; font-size: 14px;
+  }
+  button {
+    background: var(--pink); color: white; border: none; padding: 12px 18px; border-radius: 10px;
+    font-weight: 700; cursor: pointer; font-size: 14px;
+  }
+  button.secondary { background: #f3d7e6; color: var(--ink); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #progress { font-size: 13px; color: #7a5a70; margin: 10px 0; min-height: 18px; }
+  #log { font-family: monospace; font-size: 12px; background: #fbeef5; border-radius: 10px; padding: 10px; max-height: 160px; overflow-y: auto; white-space: pre-wrap; }
+  .stat-row { display:flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+  .stat { background: #fbeef5; border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+  .stat b { color: var(--pink-deep); display:block; font-size: 16px; }
+  canvas { width: 100%; height: 120px; background: #fbeef5; border-radius: 10px; display:block; }
+  .note { font-size: 12px; color: #8a6a80; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>Pink Skies — Chart Generator</h1>
+  <p class="sub">Creator tool. Analyses a song in your browser (tempo, beats, energy, percussion) and produces an initial chart.json. This never runs during normal gameplay.</p>
+
+  <div class="panel">
+    <label for="songFile">1. Choose a song (MP3)</label>
+    <input type="file" id="songFile" accept="audio/*">
+
+    <label for="songId">2. Stage/song id (used as songId and the suggested folder name)</label>
+    <input type="text" id="songId" value="stage-002" placeholder="e.g. stage-002">
+
+    <label for="seed">3. Variation seed (change this to get a different initial arrangement)</label>
+    <input type="number" id="seed" value="42">
+
+    <div class="stat-row">
+      <button id="analyseBtn">Analyse &amp; Generate Chart</button>
+      <button id="downloadBtn" class="secondary" disabled>Download chart.json</button>
+      <button id="editBtn" class="secondary" disabled>Open in Chart Editor</button>
+    </div>
+    <div id="progress"></div>
+    <div id="log"></div>
+  </div>
+
+  <div class="panel" id="resultsPanel" style="display:none;">
+    <div class="stat-row">
+      <div class="stat"><b id="statBpm">—</b>BPM</div>
+      <div class="stat"><b id="statDuration">—</b>Duration (s)</div>
+      <div class="stat"><b id="statBeats">—</b>Beats</div>
+      <div class="stat"><b id="statNotes">—</b>Notes</div>
+    </div>
+    <canvas id="energyCanvas" width="640" height="120"></canvas>
+    <p class="note">Energy curve across the song (used to pick pattern families — low/low-med/med-high/high). Open the Chart Editor next to fine-tune individual notes.</p>
+  </div>
+
+<script src="../engine/storage.js"></script>
+<script src="../engine/pattern-library.js"></script>
+<script src="../engine/beat-analyser.js"></script>
+<script src="../engine/chart-generator.js"></script>
+<script>
+(function () {
+  const logEl = document.getElementById('log');
+  const progEl = document.getElementById('progress');
+  function log(msg) { logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+
+  let lastChart = null;
+  let lastAnalysis = null;
+
+  document.getElementById('analyseBtn').addEventListener('click', async () => {
+    const fileInput = document.getElementById('songFile');
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) { alert('Choose an MP3 first.'); return; }
+    const songId = document.getElementById('songId').value.trim() || 'stage-002';
+    const seed = Number(document.getElementById('seed').value) || 42;
+
+    document.getElementById('analyseBtn').disabled = true;
+    document.getElementById('downloadBtn').disabled = true;
+    document.getElementById('editBtn').disabled = true;
+    progEl.textContent = 'Decoding audio…';
+    logEl.textContent = '';
+
+    try {
+      const t0 = performance.now();
+      const analysis = await PinkBeatAnalyser.analyseFile(file, {
+        targetSr: 22050,
+        onProgress: (p) => { progEl.textContent = 'Analysing spectrum… ' + Math.round(p * 100) + '%'; },
+      });
+      lastAnalysis = analysis;
+      log(`Decoded + analysed in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+      log(`Estimated BPM: ${analysis.bpm.toFixed(2)}  |  Beat offset: ${analysis.beatOffset.toFixed(3)}s`);
+      log(`Duration: ${analysis.duration.toFixed(2)}s  |  Beats found: ${analysis.beats.length}  |  Onsets: ${analysis.onsets.length}`);
+
+      progEl.textContent = 'Assigning patterns…';
+      const chart = PinkChartGenerator.generateChart(analysis, { songId, seed });
+      lastChart = chart;
+      log(`Generated ${chart.notes.length} notes.`);
+      const counts = {};
+      chart.notes.forEach(n => counts[n.type] = (counts[n.type] || 0) + 1);
+      log('Note type breakdown: ' + JSON.stringify(counts));
+
+      document.getElementById('statBpm').textContent = analysis.bpm.toFixed(1);
+      document.getElementById('statDuration').textContent = analysis.duration.toFixed(1);
+      document.getElementById('statBeats').textContent = analysis.beats.length;
+      document.getElementById('statNotes').textContent = chart.notes.length;
+      document.getElementById('resultsPanel').style.display = 'block';
+      drawEnergyCurve(analysis);
+
+      progEl.textContent = 'Done.';
+      document.getElementById('downloadBtn').disabled = false;
+      document.getElementById('editBtn').disabled = false;
+
+      // Save a draft into IndexedDB too, so the editor can pick it up directly.
+      await PinkStorage.saveChartDraft(songId, chart);
+    } catch (err) {
+      console.error(err);
+      log('ERROR: ' + (err && err.message ? err.message : err));
+      progEl.textContent = 'Failed — see log.';
+    } finally {
+      document.getElementById('analyseBtn').disabled = false;
+    }
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    if (!lastChart) return;
+    const blob = new Blob([JSON.stringify(lastChart, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'chart.json';
+    a.click();
+  });
+
+  document.getElementById('editBtn').addEventListener('click', () => {
+    if (!lastChart) return;
+    const songId = document.getElementById('songId').value.trim() || 'stage-002';
+    window.location.href = 'chart-editor.html?songId=' + encodeURIComponent(songId);
+  });
+
+  function drawEnergyCurve(analysis) {
+    const canvas = document.getElementById('energyCanvas');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const beats = analysis.beats;
+    if (!beats.length) return;
+    const maxE = Math.max(...beats.map(b => b.energy)) || 1;
+    ctx.beginPath();
+    beats.forEach((b, i) => {
+      const x = (i / (beats.length - 1)) * w;
+      const y = h - (b.energy / maxE) * (h - 10) - 5;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = '#e23f88';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // level bands as background shading
+    const colors = ['#ffe3ef', '#ffd0e3', '#ffb8d6', '#ff9fc7'];
+    beats.forEach((b, i) => {
+      const x = (i / beats.length) * w;
+      ctx.fillStyle = colors[b.level] + '55';
+      ctx.fillRect(x, 0, w / beats.length + 1, h);
+    });
+    // redraw the line on top
+    ctx.beginPath();
+    beats.forEach((b, i) => {
+      const x = (i / (beats.length - 1)) * w;
+      const y = h - (b.energy / maxE) * (h - 10) - 5;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+})();
+</script>
+</body>
+</html>

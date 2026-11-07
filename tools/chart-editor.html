@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pink Skies — Chart Editor</title>
+<style>
+  :root { --pink:#ff5fa2; --pink-deep:#e23f88; --bg:#fff1f7; --ink:#3a1f33; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Roboto, Arial, sans-serif; background: var(--bg); color: var(--ink); margin:0; padding: 12px; }
+  h1 { color: var(--pink-deep); font-size: 20px; margin: 0 0 8px; }
+  .toolbar { display:flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .toolbar label { font-size: 12px; font-weight: 600; }
+  input[type="file"] { font-size: 12px; }
+  button {
+    background: var(--pink); color: white; border: none; padding: 9px 14px; border-radius: 9px;
+    font-weight: 700; cursor: pointer; font-size: 13px;
+  }
+  button.secondary { background: #f3d7e6; color: var(--ink); }
+  button.danger { background: #ff5f6d; }
+  select, input[type="number"], input[type="range"] { padding: 6px; border-radius: 8px; border: 1px solid #f0c4da; font-size: 13px; }
+  #timelineWrap { overflow-x: auto; background: white; border-radius: 14px; box-shadow: 0 6px 20px rgba(226,63,136,0.12); margin-bottom: 10px; }
+  canvas { display: block; touch-action: pan-x; }
+  #inspector { background: white; border-radius: 14px; padding: 12px; box-shadow: 0 6px 20px rgba(226,63,136,0.12); max-width: 420px; }
+  #inspector .row { display:flex; align-items:center; gap: 8px; margin-bottom: 8px; }
+  #inspector .row label { width: 90px; font-size: 12px; font-weight: 600; }
+  .empty-hint { color: #8a6a80; font-size: 13px; }
+  .legend { display:flex; gap: 14px; font-size: 12px; color: #7a5a70; margin: 6px 0 10px; flex-wrap: wrap; }
+  .legend span { display:inline-flex; align-items:center; gap:4px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display:inline-block; }
+</style>
+</head>
+<body>
+  <h1>Pink Skies — Chart Editor</h1>
+
+  <div class="toolbar">
+    <div><label>Song (MP3)</label><br><input type="file" id="songFile" accept="audio/*"></div>
+    <div><label>Chart (chart.json)</label><br><input type="file" id="chartFile" accept="application/json"></div>
+    <button id="loadDraftBtn" class="secondary">Load saved draft</button>
+  </div>
+  <div class="toolbar">
+    <button id="playBtn" class="secondary">▶ Play</button>
+    <label>Zoom <input type="range" id="zoom" min="20" max="240" value="90"></label>
+    <label>Add type
+      <select id="addType">
+        <option value="tap">tap</option>
+        <option value="hold">hold</option>
+        <option value="diagonal">diagonal</option>
+      </select>
+    </label>
+    <label>Add lane
+      <select id="addLane"><option>0</option><option>1</option><option>2</option><option>3</option></select>
+    </label>
+    <span style="font-size:12px;color:#7a5a70;">Click an empty cell to add a note at that time/lane. Click a note to select/edit it. Drag a note to move it in time.</span>
+  </div>
+  <div class="legend">
+    <span><i class="swatch" style="background:#ff7fb4"></i>tap</span>
+    <span><i class="swatch" style="background:#ffd27f"></i>hold</span>
+    <span><i class="swatch" style="background:#8fe3ff"></i>diagonal</span>
+    <span><i class="swatch" style="background:#ffffff;border:1px solid #ccc"></i>playhead</span>
+  </div>
+
+  <div id="timelineWrap"><canvas id="timeline" height="220"></canvas></div>
+
+  <div id="inspector">
+    <div id="noInspector" class="empty-hint">No note selected. Click a note on the timeline to edit it, or click an empty cell to add one.</div>
+    <div id="noteFields" style="display:none;">
+      <div class="row"><label>Time (s)</label><input type="number" id="fTime" step="0.01"></div>
+      <div class="row"><label>Lane</label>
+        <select id="fLane"><option>0</option><option>1</option><option>2</option><option>3</option></select></div>
+      <div class="row"><label>Type</label>
+        <select id="fType"><option value="tap">tap</option><option value="hold">hold</option><option value="diagonal">diagonal</option></select></div>
+      <div class="row" id="durationRow"><label>Duration (s)</label><input type="number" id="fDuration" step="0.05" min="0.1"></div>
+      <div class="row" id="cornerRow"><label>Corner</label>
+        <select id="fCorner"><option value="ul">upper-left</option><option value="ur">upper-right</option><option value="dl">lower-left</option><option value="dr">lower-right</option></select></div>
+      <div class="row">
+        <button id="applyBtn">Apply</button>
+        <button id="deleteBtn" class="danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toolbar" style="margin-top:10px;">
+    <button id="saveDraftBtn">Save draft (this browser)</button>
+    <button id="downloadBtn" class="secondary">Download chart.json</button>
+    <span id="status" style="font-size:12px;color:#7a5a70;"></span>
+  </div>
+
+<audio id="audio" preload="auto"></audio>
+<script src="../engine/storage.js"></script>
+<script>
+(function () {
+  const canvas = document.getElementById('timeline');
+  const ctx = canvas.getContext('2d');
+  const audio = document.getElementById('audio');
+  const LANES = 4;
+  const LANE_H = 48;
+  const TOP_PAD = 24;
+
+  let chart = { version: 1, songId: 'stage-002', bpm: 120, beatOffset: 0, duration: 60, generated: 'manual', notes: [] };
+  let pxPerSec = Number(document.getElementById('zoom').value);
+  let selected = null;
+  let dragging = null;
+  let playing = false;
+  let rafId = 0;
+
+  function songId() {
+    const params = new URLSearchParams(location.search);
+    return params.get('songId') || chart.songId || 'stage-002';
+  }
+
+  function setStatus(s) { document.getElementById('status').textContent = s; }
+
+  function totalWidth() { return Math.max(canvas.clientWidth, (chart.duration || 60) * pxPerSec + 80); }
+
+  function resizeCanvas() {
+    canvas.width = totalWidth();
+    canvas.height = TOP_PAD + LANES * LANE_H + 20;
+    draw();
+  }
+
+  function timeToX(t) { return t * pxPerSec + 10; }
+  function xToTime(x) { return Math.max(0, (x - 10) / pxPerSec); }
+  function laneToY(lane) { return TOP_PAD + lane * LANE_H; }
+  function yToLane(y) { return Math.max(0, Math.min(LANES - 1, Math.floor((y - TOP_PAD) / LANE_H))); }
+
+  const COLORS = { tap: '#ff7fb4', hold: '#ffd27f', diagonal: '#8fe3ff' };
+
+  function draw() {
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#fffafc';
+    ctx.fillRect(0, 0, w, h);
+
+    // lane rows
+    for (let l = 0; l < LANES; l++) {
+      ctx.fillStyle = l % 2 === 0 ? '#fdf0f6' : '#fff7fb';
+      ctx.fillRect(0, laneToY(l), w, LANE_H);
+      ctx.fillStyle = '#b87b9c';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('lane ' + l, 4, laneToY(l) + 14);
+    }
+
+    // beat grid
+    if (chart.bpm) {
+      const beatSec = 60 / chart.bpm;
+      ctx.strokeStyle = 'rgba(226,63,136,0.12)';
+      ctx.lineWidth = 1;
+      let i = 0;
+      for (let t = chart.beatOffset || 0; t < (chart.duration || 60); t += beatSec, i++) {
+        const x = timeToX(t);
+        ctx.beginPath();
+        ctx.moveTo(x, TOP_PAD);
+        ctx.lineTo(x, TOP_PAD + LANES * LANE_H);
+        ctx.strokeStyle = (i % 4 === 0) ? 'rgba(226,63,136,0.28)' : 'rgba(226,63,136,0.12)';
+        ctx.stroke();
+      }
+    }
+
+    // time ruler
+    ctx.fillStyle = '#7a5a70';
+    ctx.font = '10px sans-serif';
+    for (let t = 0; t < (chart.duration || 60); t += 5) {
+      const x = timeToX(t);
+      ctx.fillText(t.toFixed(0) + 's', x + 2, TOP_PAD - 8);
+    }
+
+    // notes
+    for (const n of chart.notes) {
+      const x = timeToX(n.time);
+      const y = laneToY(n.lane) + 6;
+      const noteH = LANE_H - 12;
+      ctx.fillStyle = COLORS[n.type] || '#ccc';
+      if (n.type === 'hold') {
+        const width = Math.max(10, n.duration * pxPerSec);
+        ctx.fillRect(x, y, width, noteH);
+        ctx.strokeStyle = '#d99a2b'; ctx.strokeRect(x, y, width, noteH);
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y + noteH / 2, noteH / 2, 0, Math.PI * 2);
+        ctx.fill();
+        if (n.type === 'diagonal') {
+          ctx.fillStyle = '#2d9fc4'; ctx.font = '10px sans-serif';
+          ctx.fillText((n.corner || '').toUpperCase(), x - 8, y + noteH / 2 + 3);
+        }
+      }
+      if (selected === n) {
+        ctx.strokeStyle = '#3a1f33'; ctx.lineWidth = 2;
+        ctx.strokeRect(x - 2, y - 2, (n.type === 'hold' ? Math.max(10, n.duration * pxPerSec) : noteH) + 4, noteH + 4);
+      }
+    }
+
+    // playhead
+    if (audio.duration) {
+      const x = timeToX(audio.currentTime);
+      ctx.strokeStyle = '#3a1f33';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, 0); ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+  }
+
+  function noteAt(x, y) {
+    const t = xToTime(x), lane = yToLane(y);
+    for (const n of chart.notes) {
+      if (n.lane !== lane) continue;
+      const nx = n.time;
+      const width = (n.type === 'hold' ? n.duration : (LANE_H - 12) / pxPerSec);
+      if (t >= nx - 0.05 && t <= nx + Math.max(width, 0.12)) return n;
+    }
+    return null;
+  }
+
+  function selectNote(n) {
+    selected = n;
+    const has = !!n;
+    document.getElementById('noInspector').style.display = has ? 'none' : 'block';
+    document.getElementById('noteFields').style.display = has ? 'block' : 'none';
+    if (has) {
+      document.getElementById('fTime').value = n.time.toFixed(3);
+      document.getElementById('fLane').value = String(n.lane);
+      document.getElementById('fType').value = n.type;
+      document.getElementById('fDuration').value = n.duration || 0.5;
+      document.getElementById('fCorner').value = n.corner || 'ul';
+      document.getElementById('durationRow').style.display = n.type === 'hold' ? 'flex' : 'none';
+      document.getElementById('cornerRow').style.display = n.type === 'diagonal' ? 'flex' : 'none';
+    }
+    draw();
+  }
+
+  document.getElementById('fType').addEventListener('change', () => {
+    const t = document.getElementById('fType').value;
+    document.getElementById('durationRow').style.display = t === 'hold' ? 'flex' : 'none';
+    document.getElementById('cornerRow').style.display = t === 'diagonal' ? 'flex' : 'none';
+  });
+
+  document.getElementById('applyBtn').addEventListener('click', () => {
+    if (!selected) return;
+    selected.time = Number(document.getElementById('fTime').value) || 0;
+    selected.lane = Number(document.getElementById('fLane').value) || 0;
+    selected.type = document.getElementById('fType').value;
+    if (selected.type === 'hold') selected.duration = Number(document.getElementById('fDuration').value) || 0.5;
+    else delete selected.duration;
+    if (selected.type === 'diagonal') selected.corner = document.getElementById('fCorner').value;
+    else delete selected.corner;
+    chart.notes.sort((a, b) => a.time - b.time);
+    draw();
+  });
+  document.getElementById('deleteBtn').addEventListener('click', () => {
+    if (!selected) return;
+    chart.notes = chart.notes.filter(n => n !== selected);
+    selectNote(null);
+  });
+
+  let pointerDownInfo = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const hit = noteAt(x, y);
+    if (hit) {
+      selectNote(hit);
+      dragging = hit;
+      pointerDownInfo = { x, time: hit.time };
+    } else {
+      const t = xToTime(x), lane = yToLane(y);
+      const type = document.getElementById('addType').value;
+      const note = { id: 'n' + Date.now().toString(36), time: Math.round(t * 1000) / 1000, lane, type };
+      if (type === 'hold') note.duration = 0.5;
+      if (type === 'diagonal') note.corner = 'ul';
+      chart.notes.push(note);
+      chart.notes.sort((a, b) => a.time - b.time);
+      selectNote(note);
+      // seek playhead for convenience
+      if (audio.duration) audio.currentTime = Math.min(audio.duration, t);
+    }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging || !pointerDownInfo) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const dt = (x - pointerDownInfo.x) / pxPerSec;
+    dragging.time = Math.max(0, Math.round((pointerDownInfo.time + dt) * 1000) / 1000);
+    draw();
+  });
+  window.addEventListener('pointerup', () => {
+    if (dragging) {
+      chart.notes.sort((a, b) => a.time - b.time);
+      if (selected === dragging) document.getElementById('fTime').value = dragging.time.toFixed(3);
+    }
+    dragging = null; pointerDownInfo = null;
+  });
+  // click on ruler area (above lanes) seeks playback
+  canvas.addEventListener('dblclick', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if (audio.duration) audio.currentTime = Math.min(audio.duration, xToTime(x));
+  });
+
+  document.getElementById('zoom').addEventListener('input', (e) => {
+    pxPerSec = Number(e.target.value);
+    resizeCanvas();
+  });
+
+  document.getElementById('songFile').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    audio.src = URL.createObjectURL(f);
+    audio.addEventListener('loadedmetadata', () => {
+      if (!chart.duration || chart.duration < 1) chart.duration = audio.duration;
+      resizeCanvas();
+    }, { once: true });
+  });
+
+  document.getElementById('chartFile').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const loaded = JSON.parse(reader.result);
+        chart = Object.assign({ notes: [] }, loaded);
+        setStatus('Loaded chart with ' + chart.notes.length + ' notes.');
+        resizeCanvas();
+      } catch (err) {
+        alert('Could not parse that chart.json: ' + err.message);
+      }
+    };
+    reader.readAsText(f);
+  });
+
+  document.getElementById('loadDraftBtn').addEventListener('click', async () => {
+    const id = songId();
+    const draft = await PinkStorage.loadChartDraft(id);
+    if (!draft) { alert('No saved draft found for songId "' + id + '" in this browser.'); return; }
+    chart = draft;
+    setStatus('Loaded draft "' + id + '" with ' + chart.notes.length + ' notes.');
+    resizeCanvas();
+  });
+
+  document.getElementById('saveDraftBtn').addEventListener('click', async () => {
+    const ok = await PinkStorage.saveChartDraft(chart.songId || songId(), chart);
+    setStatus(ok ? 'Draft saved to this browser.' : 'Could not save draft (IndexedDB unavailable).');
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    chart.notes.forEach((n, i) => { n.id = 'n' + String(i).padStart(4, '0'); });
+    const blob = new Blob([JSON.stringify(chart, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'chart.json';
+    a.click();
+  });
+
+  document.getElementById('playBtn').addEventListener('click', () => {
+    if (!audio.src) { alert('Load a song first.'); return; }
+    if (playing) { audio.pause(); playing = false; document.getElementById('playBtn').textContent = '▶ Play'; }
+    else { audio.play(); playing = true; document.getElementById('playBtn').textContent = '⏸ Pause'; }
+  });
+  audio.addEventListener('ended', () => { playing = false; document.getElementById('playBtn').textContent = '▶ Play'; });
+
+  function tick() {
+    draw();
+    rafId = requestAnimationFrame(tick);
+  }
+
+  // try to auto-load a draft for the songId in the URL, if present
+  (async function init() {
+    const id = songId();
+    chart.songId = id;
+    const draft = await PinkStorage.loadChartDraft(id);
+    if (draft) { chart = draft; setStatus('Auto-loaded draft for "' + id + '".'); }
+    resizeCanvas();
+    tick();
+  })();
+
+  window.addEventListener('resize', resizeCanvas);
+})();
+</script>
+</body>
+</html>
