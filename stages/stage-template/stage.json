@@ -1,0 +1,21 @@
+{
+  "id": "stage-002",
+  "title": "Untitled Song",
+  "artist": "Unknown Artist",
+  "audio": "song.mp3",
+  "chart": "chart.json",
+  "bpm": 120,
+  "duration": 0,
+  "difficulty": "normal",
+  "background": "default",
+
+  "_instructions": [
+    "1. Copy this whole stage-template folder and rename the copy (e.g. stages/stage-002).",
+    "2. Put your song in the new folder as song.mp3 (or edit the 'audio' field above to match your filename).",
+    "3. Open tools/chart-generator.html, pick your MP3, and generate an initial chart.",
+    "4. Open tools/chart-editor.html to fine-tune the generated chart (fix timing, swap patterns, adjust density).",
+    "5. Export/save chart.json from the editor into your new stage folder, replacing this placeholder.",
+    "6. Fill in this stage.json: id, title, artist, bpm (the editor shows the detected bpm), and duration (the song's length in seconds).",
+    "7. Register the stage by adding an entry to /stages.json at the project root — that's the ONLY place you need to touch outside this folder; engine/*.js never needs editing to add a song."
+  ]
+}

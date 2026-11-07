@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "songId": "stage-002",
+  "bpm": 120,
+  "beatOffset": 0,
+  "duration": 0,
+  "generated": "placeholder",
+  "notes": [
+    { "id": "n0000", "time": 1.0, "lane": 0, "type": "tap" },
+    { "id": "n0001", "time": 1.5, "lane": 2, "type": "tap" },
+    { "id": "n0002", "time": 2.0, "lane": 1, "type": "hold", "duration": 0.75 },
+    { "id": "n0003", "time": 3.0, "lane": 3, "type": "diagonal", "corner": "ur" }
+  ],
+
+  "_schema_notes": [
+    "lane: integer 0-3 (four columns, left to right).",
+    "type: 'tap' | 'hold' | 'diagonal'.",
+    "hold notes require a 'duration' in seconds.",
+    "diagonal notes require a 'corner': one of 'ul' 'ur' 'dl' 'dr' (the screen corner the note sweeps in from).",
+    "Replace this placeholder entirely with real output from tools/chart-generator.html + tools/chart-editor.html — these four notes are only here so the file is valid JSON the engine can load while you're setting the stage up."
+  ]
+}
