@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "stages": [
+    {
+      "id": "stage-001",
+      "folder": "stages/stage-001",
+      "title": "A Hundred Little Weather Changes",
+      "artist": "usesuno.com",
+      "difficulty": "normal"
+    }
+  ]
+}

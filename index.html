@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Pink Skies</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div class="cloud-field" aria-hidden="true">
+    <div class="cloud c1"></div>
+    <div class="cloud c2"></div>
+    <div class="cloud c3"></div>
+    <div class="cloud c4"></div>
+  </div>
+
+  <!-- ===================== TITLE / MENU ===================== -->
+  <section id="menu-screen" class="screen">
+    <h1 class="title">Pink Skies</h1>
+    <p class="subtitle">a breezy little rhythm game</p>
+    <div class="panel">
+      <button class="btn block" data-go="stage-select">▶ Play</button>
+      <button class="btn secondary block" data-go="settings-screen">⚙ Settings</button>
+    </div>
+  </section>
+
+  <!-- ===================== STAGE SELECT ===================== -->
+  <section id="stage-select" class="screen hidden">
+    <h1 class="title" style="font-size:28px;">Select Stage</h1>
+    <div class="panel">
+      <div class="stage-list" data-stage-list></div>
+      <div class="btn-row">
+        <button class="btn secondary block" data-go="menu-screen">Back</button>
+        <button class="btn block" data-action="play-selected">Play</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SETTINGS ===================== -->
+  <section id="settings-screen" class="screen hidden">
+    <h1 class="title" style="font-size:28px;">Settings</h1>
+    <div class="panel">
+      <div class="settings-row">
+        <label>Note Speed</label>
+        <input type="range" min="0" max="4" step="1" data-setting="noteSpeedIndex">
+        <span data-speed-label style="min-width:84px; text-align:right; font-size:12px;"></span>
+      </div>
+      <div class="settings-row">
+        <label>Volume</label>
+        <input type="range" min="0" max="1" step="0.05" data-setting="volume">
+      </div>
+      <div class="settings-row">
+        <label>Difficulty</label>
+        <select data-setting="difficulty">
+          <option value="easy">Easy</option>
+          <option value="normal">Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label>Visual Effects</label>
+        <label class="toggle"><input type="checkbox" data-setting="effects"><span class="slider"></span></label>
+      </div>
+      <div class="settings-row">
+        <label>Orientation</label>
+        <select data-setting="orientationLock">
+          <option value="auto">Auto</option>
+          <option value="portrait">Portrait</option>
+          <option value="landscape">Landscape</option>
+        </select>
+      </div>
+      <button class="btn secondary block" data-go="menu-screen">Back</button>
+    </div>
+  </section>
+
+  <!-- ===================== GAMEPLAY ===================== -->
+  <section id="game-screen" class="screen hidden">
+    <div class="game-root" data-game-root>
+      <audio data-audio preload="auto"></audio>
+      <div class="hud-top">
+        <div class="hud-score-block">
+          <div class="hud-score" data-score>000000</div>
+          <div class="hud-combo"><span data-combo>0</span> combo</div>
+        </div>
+        <div class="hud-progress">
+          <div class="hud-progress-bar"><div class="hud-progress-fill" data-progress-fill></div></div>
+          <div class="hud-progress-text" data-progress-text>READY</div>
+        </div>
+        <div class="hud-controls">
+          <button class="icon-btn" data-action="pause">⏸</button>
+        </div>
+      </div>
+      <div class="playfield-wrap" data-fx-host>
+        <div class="playfield" data-field>
+          <div class="lane-lines"><div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div></div>
+          <div class="notes-layer" data-notes></div>
+          <div class="hit-line"></div>
+          <div class="judge-text" data-judge></div>
+        </div>
+      </div>
+      <div class="pause-overlay hidden" data-pause-overlay>
+        <div class="panel">
+          <h1 class="title" style="font-size:26px;">Paused</h1>
+          <button class="btn block" data-action="resume">▶ Resume</button>
+          <button class="btn secondary block" data-action="retry">⟲ Retry</button>
+          <button class="btn secondary block" data-action="exit-to-menu">Exit</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== RESULTS ===================== -->
+  <section id="result-screen" class="screen hidden">
+    <div class="panel">
+      <div class="rank-badge" data-rank>S</div>
+      <div class="new-best hidden" data-new-best>★ New Best! ★</div>
+      <div class="result-grid">
+        <div class="result-stat"><div class="value" data-final-score>0</div><div class="label">SCORE</div></div>
+        <div class="result-stat"><div class="value" data-accuracy>0%</div><div class="label">ACCURACY</div></div>
+        <div class="result-stat"><div class="value" data-hit-count>0</div><div class="label">HITS</div></div>
+        <div class="result-stat"><div class="value" data-miss-count>0</div><div class="label">MISSES</div></div>
+        <div class="result-stat"><div class="value" data-best-combo>0</div><div class="label">BEST COMBO</div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn secondary block" data-action="result-retry">⟲ Retry</button>
+        <button class="btn block" data-action="result-menu">Menu</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="engine/storage.js"></script>
+<script src="engine/audio.js"></script>
+<script src="engine/pattern-library.js"></script>
+<script src="engine/beat-analyser.js"></script>
+<script src="engine/chart-generator.js"></script>
+<script src="engine/input.js"></script>
+<script src="engine/effects.js"></script>
+<script src="engine/game.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
