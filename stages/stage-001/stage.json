@@ -1,0 +1,12 @@
+{
+  "id": "stage-001",
+  "title": "A Hundred Little Weather Changes",
+  "artist": "usesuno.com",
+  "audio": "song.mp3",
+  "chart": "chart.json",
+  "bpm": 99.384,
+  "duration": 178.008,
+  "difficulty": "normal",
+  "background": "default",
+  "notes_about_generation": "Initial chart produced by hybrid beat/energy analysis (onset detection, autocorrelation tempo estimate, banded spectral-flux percussion detection, RMS-based energy sections), then validated for playability. See tools/chart-editor.html to refine it further."
+}
